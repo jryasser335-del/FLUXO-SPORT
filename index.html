@@ -922,10 +922,27 @@ const TMDB_IMG = "https://image.tmdb.org/t/p/w780";
      }
    }
 */
-const EVENTS_JSON_URL = "https://raw.githubusercontent.com/jryasser335-del/FLUXO-SPORT/refs/heads/main/data/events.json";
+// URL del JSON con links (por defecto, el archivo que viaja con tu deploy en Netlify).
+// Puedes sobreescribirlo con un parámetro en la URL:
+//   ?links=https://raw.githubusercontent.com/<user>/<repo>/main/data/events.json
+const EVENTS_JSON_URL = (() => {
+  try {
+    const u = new URL(location.href);
+    return u.searchParams.get("links") || "/data/events.json";
+  } catch {
+    return "/data/events.json";
+  }
+})();
 
-let EVENT_LINKS = {};          // links cargados desde events.json
+let EVENT_LINKS = {};          // links de eventos cargados desde events.json
 let EVENT_LINKS_UPDATED_AT = "";
+
+// links de canales cargados desde events.json (channels.links)
+let CHANNEL_LINKS = {};
+let CHANNEL_LINKS_UPDATED_AT = "";
+
+let CHANNEL_LINKS = {};        // links de canales cargados desde events.json
+let CHANNEL_LINKS_UPDATED_AT = "";
 
 // Estado de UI de eventos
 let EVENTS_RAW = [];
@@ -1015,15 +1032,32 @@ function renderEvents(){
 // Carga links compartidos (los ven todos)
 async function loadEventLinks(){
   try{
-    const res = await fetch(`${EVENTS_JSON_URL}?ts=${Date.now()}`, { cache: "no-store" });
+    // Cache-bust y no-cache para que Netlify/Github Raw no te sirvan una versión vieja
+    const url = new URL(EVENTS_JSON_URL, location.href);
+    url.searchParams.set("ts", String(Date.now()));
+    const res = await fetch(url.toString(), { cache: "no-store" });
     if(!res.ok) throw new Error("No se pudo cargar events.json");
     const data = await res.json();
-    EVENT_LINKS = (data && data.links) ? data.links : {};
+
+    // Soportamos 2 formatos:
+    // 1) { updatedAt, links: {...} }
+    // 2) { updatedAt, events:{links:{...}}, channels:{links:{...}} }
+    const ev = (data && data.links) ? data.links : (data && data.events && data.events.links) ? data.events.links : {};
+    const ch = (data && data.channels && data.channels.links) ? data.channels.links : {};
+
+    EVENT_LINKS = ev || {};
+    CHANNEL_LINKS = ch || {};
     EVENT_LINKS_UPDATED_AT = (data && data.updatedAt) ? data.updatedAt : "";
+    CHANNEL_LINKS_UPDATED_AT = EVENT_LINKS_UPDATED_AT;
+
+    // Inyecta los links cargados en los canales (sin tocar el diseño)
+    applyChannelLinks(CHANNEL_LINKS);
     return true;
   }catch(e){
     EVENT_LINKS = {};
     EVENT_LINKS_UPDATED_AT = "";
+    CHANNEL_LINKS = {};
+    CHANNEL_LINKS_UPDATED_AT = "";
     return false;
   }
 }
@@ -1036,13 +1070,27 @@ const DEV_SHOW_EVENT_ID = true;
    DATA: Canales (edita aquí)
 ========================= */
 const CHANNELS = [
-  { name:"ESPN",  logo:"https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg", stream:"" },
-  { name:"Fox Sports", logo:"https://upload.wikimedia.org/wikipedia/commons/9/9e/Fox_Sports_logo.svg", stream:"" },
-  { name:"TNT Sports", logo:"https://upload.wikimedia.org/wikipedia/commons/8/8b/TNT_Logo_2016.svg", stream:"" },
-  { name:"DAZN", logo:"https://upload.wikimedia.org/wikipedia/commons/6/6c/DAZN_Logo.svg", stream:"" },
-  { name:"NBA TV", logo:"https://upload.wikimedia.org/wikipedia/commons/3/3f/NBA_TV.svg", stream:"" },
-  { name:"UFC Fight Pass", logo:"https://upload.wikimedia.org/wikipedia/commons/0/0c/UFC_Fight_Pass_logo.svg", stream:"" },
+  // `key` debe coincidir con data/events.json -> channels.links.{key}
+  { key:"espn",      name:"ESPN",        logo:"https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg", stream:"" },
+  { key:"espn2",     name:"ESPN 2",      logo:"https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg", stream:"" },
+  { key:"foxsports", name:"Fox Sports",  logo:"https://upload.wikimedia.org/wikipedia/commons/9/9e/Fox_Sports_logo.svg", stream:"" },
+  { key:"tnt",       name:"TNT Sports",  logo:"https://upload.wikimedia.org/wikipedia/commons/8/8b/TNT_Logo_2016.svg", stream:"" },
+  { key:"dazn",      name:"DAZN",        logo:"https://upload.wikimedia.org/wikipedia/commons/6/6c/DAZN_Logo.svg", stream:"" },
+  { key:"nbatv",     name:"NBA TV",      logo:"https://upload.wikimedia.org/wikipedia/commons/3/3f/NBA_TV.svg", stream:"" },
+  { key:"ufcpass",   name:"UFC Fight Pass", logo:"https://upload.wikimedia.org/wikipedia/commons/0/0c/UFC_Fight_Pass_logo.svg", stream:"" },
+  { key:"univision", name:"Univision",   logo:"https://upload.wikimedia.org/wikipedia/commons/3/3b/Univision_2019_logo.svg", stream:"" },
+  { key:"telemundo", name:"Telemundo",   logo:"https://upload.wikimedia.org/wikipedia/commons/0/0a/Telemundo_logo_2018.svg", stream:"" },
 ];
+
+function applyChannelLinks(map){
+  if(!map || typeof map !== "object") return;
+  CHANNELS.forEach(ch=>{
+    const k = (ch.key || "").toLowerCase();
+    if(k && typeof map[k] === "string" && map[k].trim()){
+      ch.stream = map[k].trim();
+    }
+  });
+}
 
 /* =========================
    Helpers
@@ -1230,7 +1278,7 @@ function renderChannels(){
   grid.innerHTML = CHANNELS.map(ch=>{
     const has = !!ch.stream;
     return `
-      <div class="channelCard" onclick="${has?`openStream('${escapeQuotes(ch.name)}','${escapeQuotes(ch.stream)}')`:`alert('Pon el stream en el código (CHANNELS).')`}">
+      <div class="channelCard" onclick="${has?`openStream('${escapeQuotes(ch.name)}','${escapeQuotes(ch.stream)}')`:`alert('Sin link para este canal. Agrega/edita data/events.json → channels.links.${escapeQuotes(ch.key)}')`}">
         <div class="chLeft">
           <div class="chLogo">
             <img src="${ch.logo}" onerror="this.style.display='none'; this.parentNode.textContent='📺';" />
@@ -1245,7 +1293,9 @@ function renderChannels(){
     `;
   }).join("");
 }
-renderChannels();
+
+// Carga links (events + channels) y luego pinta canales.
+loadEventLinks().finally(renderChannels);
 
 /* =========================
    MOVIES + SERIES (TMDB)

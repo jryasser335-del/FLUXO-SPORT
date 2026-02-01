@@ -922,13 +922,20 @@ const TMDB_IMG = "https://image.tmdb.org/t/p/w780";
      }
    }
 */
-// URL del JSON con links (por defecto, el archivo que viaja con tu deploy en Netlify).
-// Puedes sobreescribirlo con un parámetro en la URL:
+// URL del JSON con links.
+// ✅ Opción A (recomendada): deja /data/events.json y edita ese archivo en tu repo (Netlify lo sirve público).
+// ✅ Opción B: pega aquí el RAW de GitHub para que funcione incluso si cambias de repo/proyecto.
+//    Ejemplo (formato recomendado):
+//    https://raw.githubusercontent.com/USUARIO/REPO/main/data/events.json
+//    (Evita el formato .../refs/heads/... porque a veces da problemas de cache/redirect.)
+const DEFAULT_LINKS_URL = "https://raw.githubusercontent.com/jryasser335-del/FLUXO-SPORT/refs/heads/main/data/events.json"; // <-- PEGA AQUÍ TU LINK RAW
+
+// Puedes sobreescribirlo también con un parámetro en la URL:
 //   ?links=https://raw.githubusercontent.com/<user>/<repo>/main/data/events.json
 const EVENTS_JSON_URL = (() => {
   try {
     const u = new URL(location.href);
-    return u.searchParams.get("links") || "/data/events.json";
+    return u.searchParams.get("links") || DEFAULT_LINKS_URL || "/data/events.json";
   } catch {
     return "/data/events.json";
   }
@@ -939,9 +946,6 @@ let EVENT_LINKS_UPDATED_AT = "";
 
 // links de canales cargados desde events.json (channels.links)
 let CHANNEL_LINKS = {};
-let CHANNEL_LINKS_UPDATED_AT = "";
-
-let CHANNEL_LINKS = {};        // links de canales cargados desde events.json
 let CHANNEL_LINKS_UPDATED_AT = "";
 
 // Estado de UI de eventos
